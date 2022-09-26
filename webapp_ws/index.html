@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Test Controller</title>
+    <style>
+        body {
+            margin: 0;
+            padding-bottom: 0rem;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .column30 {
+            float: left;
+            width: 30%;
+
+        }
+
+        .column50 {
+            float: left;
+            width: 50%;
+        }
+
+        /* Clear floats after the columns */
+        .row:after {
+            content: "";
+            display: table;
+            clear: both;
+        }
+
+        .smallInput {
+            border: 1px solid black;
+            width: 30%;
+            padding: 1rem;
+            border-radius: 1rem;
+            margin: 0.25rem;
+            font-size: 20px;
+            display: inline;
+            text-transform: uppercase;
+        }
+
+        #messagingForm {
+            background: rgba(0, 0, 0, 0.15);
+            padding: 0.25rem;
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            display: flex;
+            height: 3rem;
+            box-sizing: border-box;
+            left: 50%;
+            backdrop-filter: blur(10px);
+        }
+
+        #textInput {
+            border: none;
+            padding: 0 1rem;
+            flex-grow: 1;
+            border-radius: 2rem;
+            margin: 0.25rem;
+        }
+
+        #textInput:focus {
+            outline: none;
+        }
+
+        button {
+            background: #333;
+            border: none;
+            padding: .75rem;
+            margin: auto;
+            border-radius: 3px;
+            outline: none;
+            color: #fff;
+            width: 150px;
+            display: inline-block;
+            vertical-align: baseline;
+        }
+
+        #roomInfo {
+            right: 0;
+            position: absolute;
+            width: 120px;
+        }
+
+        #systemMessages {
+            overflow-y: scroll;
+            min-height: 100%;
+        }
+
+        #log {
+            list-style-type: none;
+            bottom: 0;
+            min-height: 100%;
+            overflow-y: scroll;
+        }
+
+        #log>li {
+            padding: 0.5rem 1rem;
+        }
+
+        #log>li:nth-child(odd) {
+            background: #efefef;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="row">
+
+        <div class="column50">
+
+            <h2>Test Controller</h2>
+            <!--Admin controls-->
+            <!--<label for="roomCodeInput" id="roomCode">Room Code:</label>-->
+            <input class="smallInput" id="playerNameInput" placeholder="PLAYER NAME" autocomplete="off" /><br>
+
+            <div> <input class="smallInput" id="roomCodeInput" placeholder=" ROOM CODE" autocomplete="off" />
+                <!--<button id="create" type="button" title="Create Room">
+                    Create Room
+                </button>-->
+                <button id="join" type="button" title="Join Room">
+                    Join Room
+                </button>
+                <button id="leave" type="button" title="Leave Room">
+                    Leave Room
+                </button>
+            </div>
+
+
+            <div>
+                <input class="smallInput" id="controllerKeyInput" placeholder="CONTROLLER KEY" autocomplete="off" />
+                <button id="connectController" type="button" title="Connect Controller">
+                    Connect Controller
+                </button>
+            </div>
+
+            <br>
+            System Messages:
+            <ul id="systemMessages"></ul>
+        </div>
+        <div class="column50">
+            <!--Game controls-->
+            <button id="roomInfo" type="button" title="Room Info">
+                Room Info
+            </button>
+            <ul id="log"></ul>
+            <div>
+                <form id="messagingForm" action="">
+                    <input id="textInput" placeholder="Type message here." autocomplete="off" /><button>Send</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+
+</html>

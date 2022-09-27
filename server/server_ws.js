@@ -231,31 +231,31 @@ class Room {
      */
     connectController(id, controllerKey) {
         const player = this.findPlayerById(id);
-        const resultObj = {
-            result: 'fail',
+        const result = {
+            status: 'fail',
             text: 'Key Unavailable.'
         }
         console.log(`Room ${this.roomCode}: Connecting ${player.playerName} to controller ${controllerKey}...`)
         if (controllerKey) {
             if (!this.controllers.has(controllerKey)) {
-                resultObj.text = `Controller ${controllerKey} does not exist in Room: ${this.roomCode}`;
-                return resultObj;
+                result.text = `Controller ${controllerKey} does not exist in Room: ${this.roomCode}`;
+                return result;
             }
             if (player.controller.status == 'connected') {
-                resultObj.text = `${player.playerName} already has a controller: ${player.controller.key}!`;
-                return resultObj;
+                result.text = `${player.playerName} already has a controller: ${player.controller.key}!`;
+                return result;
             }
             //try setting a new controller
             if (this.checkControllerAvailability(controllerKey)) {
                 this.controllers.set(controllerKey, player);
                 player.assignController(controllerKey);
-                resultObj.result = 'success';
-                resultObj.text = `Room ${this.roomCode}: ${player.playerName} connected to controller: ${controllerKey}`;
-                return resultObj;
+                result.status = 'connected';
+                result.text = `Room ${this.roomCode}: ${player.playerName} connected to controller: ${controllerKey}`;
+                return result;
             }
-            else return resultObj;
+            else return result;
         }
-        else return resultObj;
+        else return result;
     }
     /**
      * Disconnects a WebSocket ID's player from the web controller
@@ -750,7 +750,7 @@ function configurePlayerWebsocket(ws) {
             }
         }
         if (message.type = "REQUEST") {
-            parseRequest(message, ws, room);
+            parseClientRequest(message, ws, room);
         }
     });
     ws.on('close', function () {
@@ -762,7 +762,7 @@ function configurePlayerWebsocket(ws) {
      * @param {WebSocket} ws 
      * @param {Room} room
      */
-    function parseRequest(WSMessage, ws) {
+    function parseClientRequest(WSMessage, ws) {
         const room = idRoom(ws.id);
         if (!room) {
             console.error(`Could not find room for ${idPlayer.get(ws.id).playerName}`);
@@ -790,7 +790,7 @@ function configurePlayerWebsocket(ws) {
                 message.header = "controller_connection";
                 let status = "failed";
                 const { result, text } = room.connectController(ws.id,)
-                message.status = status;
+                message.status = result;
                 break;
         }
     }

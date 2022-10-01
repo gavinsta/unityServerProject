@@ -13,7 +13,7 @@ const {
     SESS_SECRET = '$eCuRiTy',
 } = process.env;
 const app = express();
-
+const timeOutDuration = 1000 * 60 * 3;//3 minutes
 /** Room objects hold controllerKeys, controllers, hosts, players, etc 
  * and supporting functions
  */
@@ -40,26 +40,33 @@ class Room {
     }
     /**The room code of the room */
     roomCode;
-    /** The status of the room: open, closed, private, public, etc. */
+    /** The status of the room: open, closed, etc. */
     status;
+
     /** Host object */
     host;
     /**Array of players */
     players;
-    /**Map of controllers to */
+    /**Map of controllers to player objects*/
     controllers;
     /**Settings object for the Room Object */
     settings = {
-        //TODO set to false for both to save memory?
-        saveChatMessages: true,
-        saveSystemMessages: true,
-        saveLogMessages: true,
+        //TODO implement settings
+        messageSettings: {
+            saveChatMessages: true,
+            saveSystemMessages: true,
+            saveLogMessages: true,
+        },
+        /**private, public, etc.*/
+        privacySettings: "public"
     };
     /** Chat and message log of the room */
     log;
     gameContext = {};
     /**Map of players to their choice contexts*/
     choiceContexts;
+    /**Reference to timeout if room is scheduled to close */
+    timer;
     /**
  * Use a WebSocket id to return a player object in the room.
  * @param {string} id the generated uuid.v4
@@ -150,7 +157,7 @@ class Room {
         //check that this is a key already added into the room
         if (this.controllers.has(controllerKey)) {
             console.log(`Room: ${this.roomCode} has controller with key: ${controllerKey}`)
-            if (this.controllers.get(controllerKey) == null) return true
+            if (this.controllers.get(controllerKey) == '') return true
         }
         else {
             console.log(`Room ${this.roomCode} does not have controller with key: ${controllerKey}`);
@@ -213,16 +220,36 @@ class Room {
         const connectMessage = `Host connected to room ${this.roomCode}`;
         broadcast(this, connectMessage);
         console.log(connectMessage);
+        this.roomTimeOut(false);
     }
     /**
      * Disconnects the current host of this room.
      */
     disconnectHost() {
         this.host.disconnect();
-        const disconnectMessage = `Host disconnected from room ${this.roomCode}. Timeout countdown begun.`;
+        const disconnectMessage = `Host disconnected from room ${this.roomCode}. Timeout countdown begun: `;
+
         broadcast(this, disconnectMessage);
         console.log(disconnectMessage);
+        this.roomTimeOut(true);
     }
+    /**
+     * Closes the room after time has passed (designated by {timeOutDuration}). Can be interrupted by providing "false" as the parameter
+     * @param {Boolean} start if true: starts the timer, if false: stops it.
+     */
+    roomTimeOut(start) {
+        if (start && !this.timer) {
+            this.timer = setTimeout(() => {
+                this.status = "closed";
+            }, timeOutDuration);
+        }
+        else if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
+    }
+
+
     /**
      * 
      * @param {String} id the WebSocket ID assigned on connection
@@ -264,9 +291,13 @@ class Room {
     disconnectController(id) {
         const player = this.findPlayerById(id);
         const controllerKey = player.controller.key;
-        this.controllers.set(controllerKey, '');
+        if (this.controllers.has(controllerKey)) {
+            this.controllers.set(controllerKey, '');
+        }
         player.unassignController();
-        broadcast(this, `${player.playerName} disconnected from ${controllerKey}`);
+        const text = `${player.playerName} disconnected from ${controllerKey}`;
+        broadcast(this, text);
+        return { status: "disconnected", text: text }
     }
     /**
      * Send a log to the room
@@ -294,8 +325,7 @@ class Room {
      * @param {Object} WSmessage 
      */
     parseGameContext(WSmessage) {
-        data = JSON.parse(WSmessage.data);
-        this.gameContext = data;
+        this.gameContext = JSON.parse(WSmessage.data);
         this.updateGameContext();
     }
 
@@ -310,6 +340,27 @@ class Room {
                 }
                 sendWSMessage(player.ws, message, this.gameContext);
             }
+        }
+    }
+
+    parsePlayerChoiceContext(WSmessage) {
+        const choiceContext = JSON.parse(WSmessage.data);
+        console.log(choiceContext)
+        const controllerKey = choiceContext.controllerKey;
+        if (!controllerKey || !this.controllers.get(controllerKey)) {
+            let text = `Received a choice context from ${WSmessage.sender} with no controller key/connected player.`
+            console.warn(text);
+            return;
+        }
+        else {
+            this.choiceContexts.set(controllerKey, choiceContext);
+            const player = this.controllers.get(controllerKey);
+            const message = {
+                type: "UPDATE",
+                header: "choice_context",
+                sender: "server"
+            }
+            sendWSMessage(player.ws, message, choiceContext);
         }
     }
     /**
@@ -524,15 +575,15 @@ async function createTestRoom() {
     console.log(`Test room opened: ${assignedRoomCode}.`);
 
     console.log(`Filling log with test messages`);
-    for (i = 0; i < 100; i++) {
+    for (i = 0; i < 5; i++) {
         const testChat = {
             type: 'CHAT',
-            sender: 'A',
+            sender: i % 2 == 0 ? 'A' : 'B',
             text: `testing chat #${i + 1}`
         }
         const testLog = {
             type: 'CHAT',
-            sender: 'B',
+            sender: i % 2 == 0 ? 'B' : 'A',
             text: `testing log #${i + 1}`
         }
         room.log.push(testChat);
@@ -679,7 +730,7 @@ wss.on('connection', function (ws, request) {
     //test the connection
     ws.ping();
 });
-/* TODO set up an interval ping
+/* TODO set up an interval ping that checks every five minutes if hosts are still connected to the rooms. Otherwise, start a timeout to close the room.
 * forreach room in rooms: host.ws.ping() to see if it is still alive
 */
 function configureHostWebSocket(ws) {
@@ -713,13 +764,14 @@ function configureHostWebSocket(ws) {
             return;
         }
         if (message.type == "GAME_CONTEXT") {
-            parseGameContext(message);
+            room.parseGameContext(message);
             return;
         }
         if (message.type == "CHOICE_CONTEXT") {
-
+            room.parsePlayerChoiceContext(message);
         }
     }
+
 }
 
 /**
@@ -750,52 +802,65 @@ function configurePlayerWebsocket(ws) {
             }
         }
         if (message.type = "REQUEST") {
-            parseClientRequest(message, ws, room);
+            parseClientRequest(message, ws);
         }
     });
     ws.on('close', function () {
         onClosePlayerWebSocket(this);
     });
-    /**
-     * 
-     * @param {Object} WSMessage 
-     * @param {WebSocket} ws 
-     * @param {Room} room
-     */
-    function parseClientRequest(WSMessage, ws) {
-        const room = idRoom(ws.id);
-        if (!room) {
-            console.error(`Could not find room for ${idPlayer.get(ws.id).playerName}`);
-            return;
-        }
-        const message = {
-            type: "UPDATE",
-            header: "game_context",
-            sender: "server"
-        }
-        switch (WSMessage.header) {
-            case "get_game_context":
-                message.header = "game_context";
-                sendWSMessage(ws, message, room.gameContext)
-                //NOTE when we update game_context, we will automatiicaly send choice context as well
-
-                room.updatePlayerChoiceContext(idPlayer.get(ws.id));
-                break;
-            case "controller_connection":
-                const controllerKey = WSMessage.controllerKey ? WSMessage.controllerKey : '';
-                if (controllerKey == '') {
-                    console.log("No controller key attached to controller connect request");
-                    return;
-                }
-                message.header = "controller_connection";
-                let status = "failed";
-                const { result, text } = room.connectController(ws.id,)
-                message.status = result;
-                break;
-        }
-    }
 }
 
+/**
+ * 
+ * @param {Object} WSMessage 
+ * @param {WebSocket} ws 
+ * @param {Room} room
+ */
+function parseClientRequest(WSMessage, ws) {
+    const room = idRoom.get(ws.id);
+    if (!room) {
+        console.error(`Could not find room for ${idPlayer.get(ws.id).playerName}`);
+        return;
+    }
+    const message = {
+        type: "UPDATE",
+        header: "game_context",
+        sender: "server",
+    }
+    let data = null;
+    let result = { status: "", text: "" }
+    switch (WSMessage.header) {
+        case "game_context":
+            message.header = WSMessage.header;
+            data = room.gameContext;
+
+            //NOTE when we update game_context, we will automatiicaly send choice context as well
+            room.updatePlayerChoiceContext(idPlayer.get(ws.id));
+            break;
+        case "controller_connection":
+            const controllerKey = WSMessage.controllerKey ? WSMessage.controllerKey : '';
+            if (controllerKey == '') {
+                result.status = "fail";
+                result.text = "No controller key attached to controller connect request";
+                break;
+            }
+
+            result = room.connectController(ws.id, controllerKey)
+            console.log(`${result.status}: ${result.text}`)
+            message.header = WSMessage.header;
+            message.status = result.status;
+            message.text = result.text;
+            sendWSMessage(ws, message);
+
+            break;
+        case "controller_disconnection":
+            result = room.disconnectController(ws.id);
+            message.status = result.status;
+            message.text = result.text;
+            break;
+    }
+    sendWSMessage(ws, message, data)
+}
 /**
  * 
  * @param {WebSocket} ws 
@@ -938,4 +1003,8 @@ function sendWSMessage(ws, message, data) {
     const formattedMessage = message;
     formattedMessage.data = JSON.stringify(data);
     ws.send(JSON.stringify(formattedMessage));
+    if (message.type != "FULL_LOG") {
+        console.log(`Sending to: ${ws.id}`)
+        console.log(message)
+    }
 }

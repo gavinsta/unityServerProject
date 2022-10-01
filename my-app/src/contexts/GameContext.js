@@ -1,17 +1,21 @@
-import React, { createContext, useState, useContext } from "react";
+import React, { createContext, useState, useEffect, useContext } from "react";
 import { parse } from "uuid";
+
 export const GameContext = createContext({});
+
+
 export function GameContextProvider({ children }) {
   const [gameState, setGameState] = useState([]);
   const [roomCode, setRoomCode] = useState([]);
   const [playerName, setPlayerName] = useState([]);
   const [controllerKey, setControllerKey] = useState("");
-  const [controllerStatus, setControllerStatus] = useState("");
+  const [controllerStatus, setControllerStatus] = useState("none");
 
   const [fullLog, setFullLog] = useState([]);
-  const [websocket, setWS] = useState(null);
+  const [webSocket, setWebSocket] = useState(null);
   const [inRoom, setInRoom] = useState(false);
   const [choiceContext, setChoiceContext] = useState({});
+
 
   async function establishWebSocketConnection() {
     const wsURL = `ws://localhost:8080/?join=${roomCode}&name=${playerName}`
@@ -19,34 +23,48 @@ export function GameContextProvider({ children }) {
     let ws = new WebSocket(wsURL);
     ws.onerror = ws.onmessage = ws.onopen = ws.onclose = null;
     ws.onerror = (e) => {
-      //showSystemMessage(`WebSocket error.`);
     };
     ws.onopen = function () {
-      //showSystemMessage('WebSocket connection established');
       setInRoom(true);
-      requestUpdateGameContext();
     };
     ws.onclose = function () {
-      //showSystemMessage('WebSocket connection closed');
-      setInRoom(false);
+      handleDisconnect();
     };
     ws.onmessage = ((event) => {
-      console.log(`messaged`)
-      const obj = JSON.parse(event.data);
-      handleIncomingMessage(obj);
+      const message = JSON.parse(event.data);
+      handleIncomingMessage(message);
     });
-    setWS(ws);
+    setWebSocket(ws);
+
+    requestUpdateGameContext();
   };
 
-  function closeConnection() {
-    websocket.close();
+  function handleDisconnect() {
+    setInRoom(false);
+    setControllerStatus("none");
+    setFullLog([]);
+    setChoiceContext(null);
+  }
+  function sendWSMessage(message, data) {
+    message.sender = playerName;
+    message.controllerKey = controllerKey;
+    message.data = JSON.stringify(data);
+    webSocket.send(JSON.stringify(message))
   }
 
-  function handleIncomingMessage({ type, header, sender, status, data }) {
+  function closeConnection() {
+    webSocket.close();
+  }
 
+
+
+  function handleIncomingMessage(message) {
+    const { type, header, sender, status, data } = message
     let parsedData;
+    console.log(message)
     if (data) {
       parsedData = JSON.parse(data)
+
       console.log(parsedData);
     }
 
@@ -63,9 +81,15 @@ export function GameContextProvider({ children }) {
       switch (header) {
         case "game_context":
           setGameState(parsedData.gameState);
+          console.log(`Current Game State: ${gameState}`);
           break;
         case "controller_connection":
-          setControllerStatus(parsedData.status);
+          console.log(`want to set status: ${status}`);
+          setControllerStatus(status);
+          break;
+        case "choice_context":
+          console.log("received choice context.");
+          setChoiceContext(parsedData);
           break;
       }
       return;
@@ -76,7 +100,7 @@ export function GameContextProvider({ children }) {
       //showSystemMessage(obj.message);
     }
     if (type === 'SERVER') {
-      //showSystemMessage(`${obj.result}: ${obj.message}.${obj.status}`);
+      //showSystemMessage(`${ obj.result }: ${ obj.message }.${ obj.status }`);
     }
   }
 
@@ -87,7 +111,7 @@ export function GameContextProvider({ children }) {
       sender: playerName,
     }
 
-    websocket.send(JSON.stringify(message));
+    sendWSMessage(message);
   }
   function sendChat(text) {
     const message = {
@@ -95,16 +119,16 @@ export function GameContextProvider({ children }) {
       text: text,
       sender: playerName,
     }
-    websocket.send(JSON.stringify(message));
+    sendWSMessage(message);
     console.log(message);
   }
 
   function requestUpdateGameContext() {
     const message = {
       type: "REQUEST",
-      header: "get_game_context"
+      header: "game_context"
     }
-    websocket.send(JSON.stringify(message));
+    sendWSMessage(message);
     console.log(message);
   }
 
@@ -112,12 +136,18 @@ export function GameContextProvider({ children }) {
     const message = {
       type: "REQUEST",
       header: "controller_connection",
-      controllerKey: controllerKey,
-      playerName: playerName
     }
-    websocket.send(JSON.stringify(message));
+    sendWSMessage(message)
+    console.log(message);
   }
 
+  function requestDisconnectController() {
+    const message = {
+      type: "REQUEST",
+      header: "controller_disconnection",
+    }
+    sendWSMessage(message)
+  }
 
   return (
     <GameContext.Provider
@@ -138,8 +168,10 @@ export function GameContextProvider({ children }) {
         setControllerKey,
         controllerStatus,
         setControllerStatus,
-
+        choiceContext,
+        setChoiceContext,
         requestConnectController,
+        requestDisconnectController,
         requestUpdateGameContext,
       }}
     >

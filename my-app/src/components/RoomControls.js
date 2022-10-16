@@ -33,6 +33,13 @@ export function RoomControls() {
     return;
   }
 
+  function handleDisconnectController() {
+    requestDisconnectController();
+    console.log('Requesting disconnect');
+    setControllerStatus("none")
+
+  }
+
   useEffect(() => {
     if (controllerStatus == "connected") {
       console.log(`Connected to ${controllerKey}`);
@@ -96,11 +103,9 @@ export function RoomControls() {
 
             }
             else if (controllerStatus == "connected") {
-              requestDisconnectController();
-              console.log('Requesting disconnect');
-              setControllerStatus("none")
-            }
+              handleDisconnectController();
 
+            }
           }}
           disabled={!inRoom}
         >

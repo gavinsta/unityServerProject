@@ -40,8 +40,11 @@ class Room {
     }
     /**The room code of the room */
     roomCode;
-    /** The status of the room: open, closed, etc. */
-    status;
+    /** The status of the room. Should include all things we might need statuses on */
+    status = {
+        general: "open",
+        input: "pending",
+    };
 
     /** Host object */
     host;
@@ -68,10 +71,20 @@ class Room {
     /**Reference to timeout if room is scheduled to close */
     timer;
     /**
- * Use a WebSocket id to return a player object in the room.
- * @param {string} id the generated uuid.v4
- * @returns {Player} the player object
- */
+     * Returns an integer by default of all the players in the game. 
+     * @param {bool} names If names = true, will isntead return
+     */
+    countActivePlayers(names = false) {
+        if (names) {
+
+        }
+        else return this.players.length;
+    }
+    /**
+    * Use a WebSocket id to return a player object in the room.
+    * @param {string} id the generated uuid.v4
+    * @returns {Player} the player object
+    */
     findPlayerById(id) {
         for (var i = 0; i < this.players.length; i++) {
             if (this.players[i].id == id) {
@@ -240,7 +253,7 @@ class Room {
     roomTimeOut(start) {
         if (start && !this.timer) {
             this.timer = setTimeout(() => {
-                this.status = "closed";
+                this.status.general = "closed";
             }, timeOutDuration);
         }
         else if (this.timer) {
@@ -249,9 +262,8 @@ class Room {
         }
     }
 
-
     /**
-     * 
+     * Connect (really we are just saving the association) a Websocket ID to a controller.
      * @param {String} id the WebSocket ID assigned on connection
      * @param {String} controllerKey the string key you are trying to connect to
      * @returns a status object
@@ -278,6 +290,7 @@ class Room {
                 player.assignController(controllerKey);
                 result.status = 'connected';
                 result.text = `Room ${this.roomCode}: ${player.playerName} connected to controller: ${controllerKey}`;
+
                 return result;
             }
             else return result;
@@ -342,25 +355,27 @@ class Room {
             }
         }
     }
-
+    /** Receive a player choice context and then send it to that player */
     parsePlayerChoiceContext(WSmessage) {
         const choiceContext = JSON.parse(WSmessage.data);
         console.log(choiceContext)
         const controllerKey = choiceContext.controllerKey;
-        if (!controllerKey || !this.controllers.get(controllerKey)) {
-            let text = `Received a choice context from ${WSmessage.sender} with no controller key/connected player.`
+        if (!controllerKey) {
+            let text = `Received a choice context from ${WSmessage.sender} with no controller key.`
             console.warn(text);
             return;
         }
         else {
             this.choiceContexts.set(controllerKey, choiceContext);
-            const player = this.controllers.get(controllerKey);
-            const message = {
-                type: "UPDATE",
-                header: "choice_context",
-                sender: "server"
+            if (this.controllers.get(controllerKey)) {
+                const player = this.controllers.get(controllerKey);
+                const message = {
+                    type: "UPDATE",
+                    header: "choice_context",
+                    sender: "server"
+                }
+                sendWSMessage(player.ws, message, choiceContext);
             }
-            sendWSMessage(player.ws, message, choiceContext);
         }
     }
     /**
@@ -382,7 +397,9 @@ class Room {
      * @param {Player} player 
      */
     updatePlayerChoiceContext(player) {
-        if (player.controller.key != '') {
+        console.log(`${player.playerName} has key: ${player.controller.key}`)
+        if (player.controller.key) {
+
             const controllerKey = player.controller.key;
             const context = this.choiceContexts.get(controllerKey);
             const message = {
@@ -393,6 +410,33 @@ class Room {
             sendWSMessage(player.ws, message, context);
         }
     }
+
+    updatePlayerSelectedChoice(player, choice) {
+        this.currentSelectedChoices.set(player, choice);
+        //run a quick check to see if we still need more player choices
+        if (this.currentSelectedChoices.size == this.countActivePlayers()) {
+            //send the choices off!
+            //TODO we will eventually put some logic here in case only certain players at a time can make a decision/choice
+            this.sendCurrentChoices();
+        }
+    }
+
+    sendCurrentChoices() {
+        const message = {
+            type: "COMMAND",
+            header: "choices",
+        }
+        let choices = [];
+        this.currentSelectedChoices.forEach((val, key) => {
+            choices.push(val);
+        })
+        const bundledChoices = {
+            prompt: 'none',
+            choices: choices,
+        }
+        sendWSMessage(this.host.ws, message, bundledChoices);
+    }
+    currentSelectedChoices = new Map();
 }
 /** Class for managing the Unity Host Object of rooms  (and connections) */
 class Host {
@@ -733,6 +777,7 @@ wss.on('connection', function (ws, request) {
 /* TODO set up an interval ping that checks every five minutes if hosts are still connected to the rooms. Otherwise, start a timeout to close the room.
 * forreach room in rooms: host.ws.ping() to see if it is still alive
 */
+
 function configureHostWebSocket(ws) {
     ws.on('pong', function heartbeat() {
         this.isAlive = true;
@@ -800,6 +845,7 @@ function configurePlayerWebsocket(ws) {
                 }));
                 return;
             }
+            parseClientCommand(message, ws);
         }
         if (message.type = "REQUEST") {
             parseClientRequest(message, ws);
@@ -809,7 +855,29 @@ function configurePlayerWebsocket(ws) {
         onClosePlayerWebSocket(this);
     });
 }
+function parseClientCommand(WSMessage, ws) {
+    const { header, data } = WSMessage
+    const room = idRoom.get(ws.id);
+    const response = {}
+    switch (header) {
+        case "choice":
+            if (!data) {
+                response.type = "SERVER";
+                response.header = "error";
+                response.text = 'Could not find data for submitted choice'
+                break;
+            }
+            else {
+                const choice = JSON.parse(data);
+                console.log(`Received Choice!`)
+                console.log(choice);
+                room.updatePlayerSelectedChoice(idPlayer.get(ws.id), choice)
+            }
+            break;
+    }
 
+    sendWSMessage(ws, response, null, true);
+}
 /**
  * 
  * @param {Object} WSMessage 
@@ -824,7 +892,7 @@ function parseClientRequest(WSMessage, ws) {
     }
     const message = {
         type: "UPDATE",
-        header: "game_context",
+        header: "",
         sender: "server",
     }
     let data = null;
@@ -851,12 +919,13 @@ function parseClientRequest(WSMessage, ws) {
             message.status = result.status;
             message.text = result.text;
             sendWSMessage(ws, message);
-
+            room.updatePlayerChoiceContext(idPlayer.get(ws.id));
             break;
         case "controller_disconnection":
             result = room.disconnectController(ws.id);
             message.status = result.status;
             message.text = result.text;
+            message.header = "controller_connection"
             break;
     }
     sendWSMessage(ws, message, data)
@@ -889,7 +958,7 @@ function onClosePlayerWebSocket(ws) {
 function onCloseHostWebSocket(ws) {
     const room = idRoom.get(ws.id);
     const text = `Host left the room.`;
-    room.status = 'no_host';
+    room.status.general = 'no_host';
     broadcast(room, text);
     room.disconnectHost();
     onCloseWebSocket(ws);
@@ -986,7 +1055,6 @@ function broadcast(room, text) {
             sender: 'server',
             header: 'broadcast',
             text: text,
-
         });
     }
     else {
@@ -998,12 +1066,13 @@ function broadcast(room, text) {
  * @param {WebSocket} ws 
  * @param {object} message 
  * @param {object} data 
+ * @param {boolean} debug Whether this function will also print out console logs for easy reference
  */
-function sendWSMessage(ws, message, data) {
+function sendWSMessage(ws, message, data, debug = false) {
     const formattedMessage = message;
     formattedMessage.data = JSON.stringify(data);
     ws.send(JSON.stringify(formattedMessage));
-    if (message.type != "FULL_LOG") {
+    if (debug) {
         console.log(`Sending to: ${ws.id}`)
         console.log(message)
     }

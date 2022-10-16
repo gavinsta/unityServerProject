@@ -28,7 +28,7 @@ export function GameContextProvider({ children }) {
       setInRoom(true);
     };
     ws.onclose = function () {
-      handleDisconnect();
+      handleCloseConnection();
     };
     ws.onmessage = ((event) => {
       const message = JSON.parse(event.data);
@@ -39,12 +39,17 @@ export function GameContextProvider({ children }) {
     requestUpdateGameContext();
   };
 
-  function handleDisconnect() {
+  function handleCloseConnection() {
     setInRoom(false);
     setControllerStatus("none");
     setFullLog([]);
-    setChoiceContext(null);
   }
+  useEffect(() => {
+    if (controllerStatus == "none") {
+      setChoiceContext(null);
+    }
+  }, [controllerStatus]);
+
   function sendWSMessage(message, data) {
     message.sender = playerName;
     message.controllerKey = controllerKey;
@@ -55,8 +60,6 @@ export function GameContextProvider({ children }) {
   function closeConnection() {
     webSocket.close();
   }
-
-
 
   function handleIncomingMessage(message) {
     const { type, header, sender, status, data } = message
@@ -122,6 +125,19 @@ export function GameContextProvider({ children }) {
     sendWSMessage(message);
     console.log(message);
   }
+  /**
+   * sends a choice object as a JSON string back to the server
+   * @param {Choice} choice 
+   */
+  function sendChoice(choice) {
+    const message = {
+      type: "COMMAND",
+      header: "choice",
+      controllerKey: controllerKey,
+      sender: playerName,
+    }
+    sendWSMessage(message, choice);
+  }
 
   function requestUpdateGameContext() {
     const message = {
@@ -148,7 +164,7 @@ export function GameContextProvider({ children }) {
     }
     sendWSMessage(message)
   }
-
+  //TODO add a paused screen when Host is disconnected
   return (
     <GameContext.Provider
       value={{
@@ -170,6 +186,7 @@ export function GameContextProvider({ children }) {
         setControllerStatus,
         choiceContext,
         setChoiceContext,
+        sendChoice,
         requestConnectController,
         requestDisconnectController,
         requestUpdateGameContext,

@@ -431,10 +431,12 @@ class Room {
             choices.push(val);
         })
         const bundledChoices = {
-            prompt: 'none',
+            prompt: 'some_prompt',
             choices: choices,
         }
-        sendWSMessage(this.host.ws, message, bundledChoices);
+        console.log(bundledChoices)
+        //TODO debug is on
+        sendWSMessage(this.host.ws, message, bundledChoices, true);
     }
     currentSelectedChoices = new Map();
 }
@@ -556,10 +558,12 @@ async function createNewRoom(ws, controllerKeyString, roomCode) {
         assignedRoomCode = roomCode;
     }
     else {
-        assignedRoomCode = generateKey(serverSettings.keyLength);
-        while (!checkValidRoomCode(assignedRoomCode)) {
-            assignedRoomCode = generateKey(serverSettings.keyLength);
-        }
+
+        assignedRoomCode = 'TEST'//URGENT switch back to original code.
+        // assignedRoomCode = generateKey(serverSettings.keyLength);
+        // while (!checkValidRoomCode(assignedRoomCode)) {
+        //     assignedRoomCode = generateKey(serverSettings.keyLength);
+        // }
     }
 
     let controllerKeyList = JSON.parse(controllerKeyString);
@@ -870,13 +874,13 @@ function parseClientCommand(WSMessage, ws) {
             else {
                 const choice = JSON.parse(data);
                 console.log(`Received Choice!`)
-                console.log(choice);
+                //console.log(choice);
                 room.updatePlayerSelectedChoice(idPlayer.get(ws.id), choice)
             }
             break;
     }
 
-    sendWSMessage(ws, response, null, true);
+    sendWSMessage(ws, response, null);
 }
 /**
  * 
@@ -985,7 +989,8 @@ wss.on('listening', () => {
 //
 server.listen(port, function () {
     console.log(`Listening on http://localhost:${port}`);
-    createTestRoom();
+    //NOTE create a Test room for looking at console output
+    //createTestRoom();
 });
 
 /**

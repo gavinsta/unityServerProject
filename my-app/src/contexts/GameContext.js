@@ -136,6 +136,7 @@ export function GameContextProvider({ children }) {
       controllerKey: controllerKey,
       sender: playerName,
     }
+    choice.controllerKey = controllerKey;
     sendWSMessage(message, choice);
   }
 

@@ -21,25 +21,30 @@ export function ControlsDisplay() {
     setSelectedChoice(null);
   }
   function selectFinalChoice(choice) {
-    let combinedName = '';
-    let combinedDescription = '';
-    let combinedChoiceData = '';
-    for (let i = 0; i < expanded.length; i++) {
-      combinedName += expanded[i].choiceName;
-      combinedDescription += expanded[i].choiceDescription;
-      combinedChoiceData += expanded[i].choiceData;
-    }
-    const combinedChoice = {
+    const finalChoice = {
       type: choice.type,
-      choiceName: combinedName += choice.choiceName,
-      choiceDescription: combinedDescription += choice.choiceDescription,
-      choiceData: combinedChoiceData += choice.choiceData,
+      choiceName: expanded[0].choiceName,
+      choiceDescription: expanded[0].choiceDescription,
+      choiceData: expanded[0].choiceData,
+      additionalChoices: [],
     }
-    return combinedChoice;
+
+    let lastChoice = finalChoice;
+    //shove the rest of the expanded list into a nested structure
+    //TODO add a way to include multiple choices at the same level. We'll revisit this.
+    console.log(`expanded.length: ${expanded.length}`)
+    for (let i = 1; i < expanded.length; i++) {
+      const currentChild = expanded[i];
+      lastChoice.additionalChoices.push(currentChild)
+      console.log(`Adding ${expanded[i]} to choice`);
+      lastChoice = currentChild
+    }
+    lastChoice.additionalChoices.push(choice);
+
+    return finalChoice;
   }
   function selectChoice(choice) {
     if (choice.additionalChoices) {
-      //if there are more sub options to choose from...
       if (expanded) {
         setExpanded(...expanded, choice);
       }
@@ -47,9 +52,8 @@ export function ControlsDisplay() {
         setExpanded([choice])
       )
     }
+    //if there's no more additional choices
     else {
-      //otherwise select this choice
-
       setSelectedChoice(selectFinalChoice(choice));
       console.log(`Selected choice: ${choice.choiceName} id: ${choice.choiceID}`);
     }
@@ -58,6 +62,7 @@ export function ControlsDisplay() {
     if (selectedChoice) {
       sendChoice(selectedChoice);
     }
+    clearSelection();
   }
   function back() {
     if (!expanded) return;
@@ -68,7 +73,14 @@ export function ControlsDisplay() {
       setExpanded(null);
     }
   }
-
+  function getChildChoices() {
+    if (expanded && expanded[expanded.length - 1]) {
+      if (expanded[expanded.length - 1].additionalChoices !== undefined) {
+        return expanded[expanded.length - 1].additionalChoices;
+      }
+    }
+    else return choiceContext?.playerChoices
+  }
   return (<div
     style={{
       display: "grid",
@@ -90,7 +102,7 @@ export function ControlsDisplay() {
           gridArea: "main", background: 'lightgrey', backgroundColor: 'lightgrey', display: 'grid',
           gridTemplateRows: 'auto min-content', height: '100%'
         }}
-        choices={expanded ? expanded[expanded.length - 1].additionalChoices : choiceContext?.playerChoices}
+        choices={getChildChoices()}
         selectChoice={selectChoice}
         back={back}
         clearSelection={clearSelection}
@@ -114,6 +126,7 @@ export function ControlsDisplay() {
 }
 function InfoPanel({ selectedChoice, hoverChoice, style }) {
   function presentChoiceInfo(choice) {
+    //TODO flesh out the choice panel
     if (choice) {
       switch (choice.type) {
         case "COMBAT":
